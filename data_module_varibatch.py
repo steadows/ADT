@@ -17,7 +17,7 @@ from lightning.pytorch.utilities.combined_loader import CombinedLoader
 
 class RNAADTDataModule(pl.LightningDataModule):
     def __init__(
-        self, batch_size=128, num_workers=4, data_dir="data/", mode="autoencoder"
+        self, batch_size=128, num_workers=4, data_dir="/home/ubuntu/ADT/data", mode="autoencoder"
     ):
         super().__init__()
         self.batch_size = batch_size
@@ -27,16 +27,14 @@ class RNAADTDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         # Load CSV files
-        train_rna = pd.read_csv(f"{self.data_dir}/train_rna.csv")
-        train_adt = pd.read_csv(f"{self.data_dir}/train_adt.csv")
+        train_rna = pd.read_csv(f"{self.data_dir}/train_RNA.csv")
+        train_adt = pd.read_csv(f"{self.data_dir}/train_ADT.csv")
 
-        eval_rna = pd.read_csv(f"{self.data_dir}/eval_rna.csv" )
-        eval_adt = pd.read_csv(f"{self.data_dir}/eval_adt.csv")
+        eval_rna = pd.read_csv(f"{self.data_dir}/eval_RNA.csv" )
+        eval_adt = pd.read_csv(f"{self.data_dir}/eval_ADT.csv")
 
-        test_rna = pd.read_csv(f"{self.data_dir}/test_rna.csv")
-    
+        test_rna = pd.read_csv(f"{self.data_dir}/test_RNA.csv")
         
-
         # Transpose if needed
         train_rna = train_rna.T
         train_adt = train_adt.T
