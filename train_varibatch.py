@@ -8,6 +8,7 @@
 
 import os
 import shutil
+import time
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -18,9 +19,24 @@ from pytorch_lightning.callbacks import (
 from data_module_varibatch import RNAADTDataModule
 from model_varibatch import CrossModalVAE
 from callbacks import SharedEmbeddingCallback
+from pytorch_lightning.strategies import DeepSpeedStrategy  # Using DeepSpeed
+from pytorch_lightning.utilities import rank_zero_only
+import logging
+# Only log warnings and above for Lightning on all ranks
+logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
+
+
+@rank_zero_only
+def my_print(message):
+    print(message)
+
+# Now only rank 0 will execute this print:
+my_print("This message is printed only by rank 0.")
+
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     pl.seed_everything(1986)
 
     if torch.backends.mps.is_available():
@@ -29,6 +45,13 @@ if __name__ == "__main__":
         accelerator = "gpu"
     else:
         accelerator = "cpu"
+
+    @rank_zero_only
+    def my_print(message):
+        print(message)
+    
+    # Now only rank 0 will execute this print:
+    my_print("This message is printed only by rank 0.")    
 
     import multiprocessing
 
@@ -101,6 +124,12 @@ if __name__ == "__main__":
         "TensorBoard", name="logs", log_graph=True, default_hp_metric=False
     )
 
+    # Define your DeepSpeed configuration explicitly:
+    deepspeed_config = {
+        "train_micro_batch_size_per_gpu": 632  # Set this to your per-GPU batch size
+        # You can include additional DeepSpeed options here if needed
+    }
+        
     # ---------------------------
     # PHASE 1: Autoencoder Training
     print("\n--- Phase 1: Autoencoder Training ---\n")
@@ -110,12 +139,20 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         max_epochs=150,
         accelerator=accelerator,  # Change to "gpu" or "mps" if available
-        devices=1,
+        devices=8,
+        accumulate_grad_batches=1,
+        strategy=DeepSpeedStrategy(stage=2, config=deepspeed_config), 
         callbacks=callbacks,
         logger=logger,
         log_every_n_steps=5,
     )
     trainer.fit(model, dm)
+
+    # Define your DeepSpeed configuration explicitly:
+    deepspeed_config = {
+        "train_micro_batch_size_per_gpu": 632  # Set this to your per-GPU batch size
+        # You can include additional DeepSpeed options here if needed
+    }
     
     # PHASE 2: Cross-Modal Training
     print("\n--- Phase 2: Cross-Modal Training ---\n")
@@ -127,13 +164,20 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         max_epochs=150,
         accelerator=accelerator,
-        devices=1,
+        devices=8,
+        accumulate_grad_batches=1,
+        strategy=DeepSpeedStrategy(stage=2, config=deepspeed_config),
         callbacks=callbacks + [embedding_callback],
         logger=logger,
         log_every_n_steps=5,
     )
     trainer.fit(model, dm)
 
+    # Define your DeepSpeed configuration explicitly:
+    deepspeed_config = {
+        "train_micro_batch_size_per_gpu": 632  # Set this to your per-GPU batch size
+        # You can include additional DeepSpeed options here if needed
+    }
 
     # ---------------------------
     # PHASE 3: Cross-Modal Evaluation
@@ -141,16 +185,20 @@ if __name__ == "__main__":
 
     # 1. Instantiate your LightningModule from the best checkpoint
     model = CrossModalVAE.load_from_checkpoint(
-        "checkpoints/best_model_cross_modal.ckpt",
+        "/home/ubuntu/ADT/checkpoints/best_model_cross_modal.ckpt",
         lr=lr,
     )
 
     trainer = pl.Trainer(
         accelerator=accelerator, 
-        devices=1, 
+        devices=8,
+        accumulate_grad_batches=1,
+        strategy=DeepSpeedStrategy(stage=2, config=deepspeed_config), 
         logger=logger, 
         log_every_n_steps=5
     )
     trainer.test(model, dm)
 
-    print("\nTraining Complete! Check your logs and checkpoints for details.")
+    end_time = time.time()  # End time for runtime measurement
+    total_runtime = end_time - start_time
+    print(f"\nTraining Complete! Total runtime: {total_runtime:.2f} seconds.")
